@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  rooms          RoomParticipant[]
+  nominations    ActiveAuction[]   @relation("NominatedBy")
+  bids           BidHistory[]
+  wonPlayers     AuctionPlayer[]
+  currentBidding ActiveAuction[]   @relation("CurrentBidder")
+  createdRooms   Room[]
+
+  @@map("users")
+}
+
+model Room {
+  id             String     @id @default(uuid())
+  code           String     @unique @db.Char(6)
+  createdBy      String     @map("created_by")
+  creator        User       @relation(fields: [createdBy], references: [id])
+  status         RoomStatus @default(waiting)
+  timerDuration  Int        @default(10) @map("timer_duration")
+  startingBudget BigInt     @default(100000000) @map("starting_budget")
+  minIncrement   BigInt     @default(1000000) @map("min_increment")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  participants   RoomParticipant[]
+  auctionPlayers AuctionPlayer[]
+  activeAuction  ActiveAuction?
+  bidHistory     BidHistory[]
+
+  @@map("rooms")
+}
+
+enum RoomStatus {
+  waiting
+  live
+  completed
+}
+
+model RoomParticipant {
+  id       String   @id @default(uuid())
+  roomId   String   @map("room_id")
+  userId   String   @map("user_id")
+  budget   BigInt
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, userId])
+  @@map("room_participants")
+}
+
+model Player {
+  id       String         @id @default(uuid())
+  name     String
+  position PlayerPosition
+  team     String
+  rating   Int
+  photoUrl String?        @map("photo_url")
+
+  auctionSlots   AuctionPlayer[]
+  activeAuctions ActiveAuction[]
+
+  @@map("players")
+}
+
+enum PlayerPosition {
+  GK
+  DEF
+  MID
+  FWD
+}
+
+model AuctionPlayer {
+  id         String              @id @default(uuid())
+  roomId     String              @map("room_id")
+  playerId   String              @map("player_id")
+  status     AuctionPlayerStatus @default(available)
+  ownedBy    String?             @map("owned_by")
+  soldAmount BigInt?             @map("sold_amount")
+
+  room   Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player Player  @relation(fields: [playerId], references: [id])
+  owner  User?   @relation(fields: [ownedBy], references: [id])
+
+  @@unique([roomId, playerId])
+  @@map("auction_players")
+}
+
+enum AuctionPlayerStatus {
+  available
+  active
+  sold
+  unsold
+}
+
+model ActiveAuction {
+  id                String        @id @default(uuid())
+  roomId            String        @unique @map("room_id")
+  playerId          String        @map("player_id")
+  nominatedBy       String        @map("nominated_by")
+  currentBid        BigInt        @map("current_bid")
+  currentBidder     String?       @map("current_bidder")
+  currentBidderName String?       @map("current_bidder_name")
+  timerEndsAt       BigInt        @map("timer_ends_at")
+  status            AuctionStatus @default(active)
+  startedAt         DateTime      @default(now()) @map("started_at")
+  endedAt           DateTime?     @map("ended_at")
+
+  room      Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player    Player      @relation(fields: [playerId], references: [id])
+  nominator User        @relation("NominatedBy", fields: [nominatedBy], references: [id])
+  bidder    User?       @relation("CurrentBidder", fields: [currentBidder], references: [id])
+  bids      BidHistory[]
+
+  @@map("active_auctions")
+}
+
+enum AuctionStatus {
+  active
+  sold
+}
+
+model BidHistory {
+  id          String @id @default(uuid())
+  roomId      String @map("room_id")
+  auctionId   String @map("auction_id")
+  userId      String @map("user_id")
+  displayName String @map("display_name")
+  amount      BigInt
+  placedAt    BigInt @map("placed_at")
+
+  room    Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  auction ActiveAuction @relation(fields: [auctionId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
+
+  @@map("bid_history")
+}
